@@ -20,17 +20,25 @@ export function DifficultySelector() {
           Choose your challenge level
         </p>
         <div className="flex flex-col sm:flex-row justify-center gap-4">
-          {Object.entries(GAME_CONFIG.difficulties).map(([key, config]) => (
-            <Button 
-              key={key}
-              variant={selectedDifficulty === key ? "default" : "outline"}
-              onClick={() => selectDifficulty(key as Difficulty)}
-              className="w-full sm:w-auto"
-            >
-              {config.name}
-            </Button>
-          ))}
+          {Object.entries(GAME_CONFIG.difficulties).map(([key, config]) => {
+            const isDisabled = key === 'medium' || key === 'hard';
+            return (
+              <Button 
+                key={key}
+                variant={selectedDifficulty === key ? "default" : "outline"}
+                onClick={() => !isDisabled && selectDifficulty(key as Difficulty)}
+                className={`w-full sm:w-auto ${isDisabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+                disabled={isDisabled}
+              >
+                {config.name}
+              </Button>
+            );
+          })}
         </div>
+        {/* Note: Only Easy mode is currently available */}
+        <p className="text-center text-sm text-muted-foreground">
+          Note: Only Easy mode is currently available
+        </p>
       </CardContent>
     </Card>
   )

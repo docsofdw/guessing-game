@@ -1,0 +1,23 @@
+<svg width="100" height="100" xmlns="http://www.w3.org/2000/svg">
+  <!-- Football pattern -->
+  <defs>
+    <pattern id="football-pattern" patternUnits="userSpaceOnUse" width="100" height="100">
+      <!-- Football outline -->
+      <path d="M50,10 C70,15 85,30 90,50 C85,70 70,85 50,90 C30,85 15,70 10,50 C15,30 30,15 50,10 Z" 
+            fill="none" stroke="white" stroke-width="1" opacity="0.2" />
+      
+      <!-- Football laces -->
+      <line x1="50" y1="30" x2="50" y2="70" stroke="white" stroke-width="1" opacity="0.2" />
+      <line x1="45" y1="45" x2="55" y2="45" stroke="white" stroke-width="1" opacity="0.2" />
+      <line x1="45" y1="50" x2="55" y2="50" stroke="white" stroke-width="1" opacity="0.2" />
+      <line x1="45" y1="55" x2="55" y2="55" stroke="white" stroke-width="1" opacity="0.2" />
+      
+      <!-- Football seams -->
+      <path d="M20,50 C30,30 70,30 80,50 C70,70 30,70 20,50 Z" 
+            fill="none" stroke="white" stroke-width="1" opacity="0.2" />
+    </pattern>
+  </defs>
+  
+  <!-- Apply the pattern to a rectangle that covers the entire SVG -->
+  <rect width="100" height="100" fill="url(#football-pattern)" />
+</svg> 
