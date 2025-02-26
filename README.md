@@ -39,16 +39,18 @@ npm run dev
 ## 📁 Project Structure
 
 ```
-├── app/                # Next.js pages/routing
-├── src/
+├── app/                # Next.js App Router
 │   ├── components/    # React components
-│   │   ├── common/   # Reusable UI components
-│   │   └── features/ # Feature-specific components
-│   ├── hooks/        # Custom React hooks
-│   ├── lib/          # Utility functions
-│   ├── types/        # TypeScript definitions
-│   └── styles/       # Global styles
-└── docs/             # Documentation
+│   │   ├── ui/        # Reusable UI components
+│   │   └── features/  # Feature-specific components
+│   ├── hooks/         # Custom React hooks
+│   ├── lib/           # Utility functions
+│   ├── types/         # TypeScript definitions
+│   ├── utils/         # Helper functions
+│   ├── api/           # API routes
+│   └── [routes]/      # Page routes
+├── public/            # Static assets
+└── docs/              # Documentation
 ```
 
 ## 📖 Documentation

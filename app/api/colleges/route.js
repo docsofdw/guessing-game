@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server';
+import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
+import { cookies } from 'next/headers';
 
-// This is a simplified list of colleges
-// In a real application, you would fetch this from a database
-const collegeData = [
+// Fallback data in case the database query fails
+const fallbackCollegeData = [
   { id: 1, name: 'Harvard University' },
   { id: 2, name: 'Stanford University' },
   { id: 3, name: 'Massachusetts Institute of Technology' },
@@ -13,16 +14,6 @@ const collegeData = [
   { id: 8, name: 'Duke University' },
   { id: 9, name: 'Columbia University' },
   { id: 10, name: 'University of Pennsylvania' },
-  { id: 11, name: 'Cornell University' },
-  { id: 12, name: 'University of Chicago' },
-  { id: 13, name: 'Northwestern University' },
-  { id: 14, name: 'Johns Hopkins University' },
-  { id: 15, name: 'California Institute of Technology' },
-  { id: 16, name: 'University of California, Los Angeles' },
-  { id: 17, name: 'University of Wisconsin-Madison' },
-  { id: 18, name: 'University of Texas at Austin' },
-  { id: 19, name: 'New York University' },
-  { id: 20, name: 'University of Washington' },
   // Add more colleges as needed
 ];
 
@@ -30,17 +21,41 @@ export async function GET(request) {
   const { searchParams } = new URL(request.url);
   const search = searchParams.get('search') || '';
   
-  if (!search || search.length < 2) {
+  if (!search || search.length < 3) {
     return NextResponse.json([]);
   }
   
-  // Filter colleges based on search term (case-insensitive)
-  const filteredColleges = collegeData.filter(college => 
-    college.name.toLowerCase().includes(search.toLowerCase())
-  );
-  
-  // Limit results to prevent overwhelming the UI
-  const limitedResults = filteredColleges.slice(0, 10);
-  
-  return NextResponse.json(limitedResults);
+  try {
+    // Create a Supabase client
+    const cookieStore = cookies();
+    const supabase = createRouteHandlerClient({ cookies: () => cookieStore });
+    
+    // Query the colleges table
+    const { data, error } = await supabase
+      .from('colleges')
+      .select('id, name')
+      .ilike('name', `%${search}%`)
+      .order('name')
+      .limit(10);
+    
+    if (error) {
+      console.error('Error fetching colleges from database:', error);
+      // Fall back to the hardcoded data if there's an error
+      const filteredFallbackData = fallbackCollegeData.filter(college => 
+        college.name.toLowerCase().includes(search.toLowerCase())
+      );
+      return NextResponse.json(filteredFallbackData.slice(0, 10));
+    }
+    
+    return NextResponse.json(data);
+  } catch (error) {
+    console.error('Error in colleges API route:', error);
+    
+    // Fall back to the hardcoded data if there's an error
+    const filteredFallbackData = fallbackCollegeData.filter(college => 
+      college.name.toLowerCase().includes(search.toLowerCase())
+    );
+    
+    return NextResponse.json(filteredFallbackData.slice(0, 10));
+  }
 }
