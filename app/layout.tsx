@@ -2,6 +2,7 @@
 import type { Metadata } from "next"
 import { Geist, Geist_Mono } from "next/font/google"
 import "@/src/styles/globals.css"
+import Script from "next/script"
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -25,8 +26,22 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
+      <head>
+        <Script id="bootstrap-fix" strategy="beforeInteractive">
+          {`
+            // Fix for Bootstrap domQueryService error
+            window.domQueryService = {
+              checkPageContainsShadowDom: function() {
+                return false;
+              }
+            };
+            console.log('Bootstrap fix injected via head script');
+          `}
+        </Script>
+      </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} min-h-screen bg-background font-sans antialiased`}
+        suppressHydrationWarning
       >
         <div className="relative flex min-h-screen flex-col">
           <main className="flex-1">{children}</main>

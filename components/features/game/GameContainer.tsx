@@ -1,11 +1,11 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { createClient } from '@supabase/supabase-js';
+import { getPlayerImage } from '../../../lib/playerImages'; // Import the new function
 
 // Create Supabase client
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
-const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 // Define types for better TypeScript support
 interface Player {
@@ -17,209 +17,179 @@ interface Player {
   image_url?: string;
 }
 
-interface GameState {
-  currentPlayer: Player | null;
-  attempts: number;
-  isCorrect: boolean;
-  gaveUp: boolean;
-  guesses: string[];
-  feedback: string;
-}
-
 export function GameContainer() {
-  const [playerData, setPlayerData] = useState<Player[]>([]);
+  // Game state
+  const [isLoaded, setIsLoaded] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [player, setPlayer] = useState<Player | null>(null);
+  const [playerCount, setPlayerCount] = useState(0);
   const [guess, setGuess] = useState('');
-  const [collegeList, setCollegeList] = useState<string[]>([]);
-  const [filteredColleges, setFilteredColleges] = useState<string[]>([]);
-  const [showSuggestions, setShowSuggestions] = useState(false);
-  const [gameState, setGameState] = useState<GameState>({
-    currentPlayer: null,
-    attempts: 0,
-    isCorrect: false,
-    gaveUp: false,
-    guesses: [],
-    feedback: ''
-  });
+  const [attempts, setAttempts] = useState(0);
+  const [guesses, setGuesses] = useState<string[]>([]);
+  const [feedback, setFeedback] = useState('');
+  const [gameState, setGameState] = useState<'playing' | 'correct' | 'incorrect' | 'gaveup'>('playing');
+  const [playerImage, setPlayerImage] = useState<string | null>(null);
 
-  // Maximum number of attempts allowed
+  // Maximum attempts allowed
   const MAX_ATTEMPTS = 3;
 
-  // Fetch player data from Supabase
   useEffect(() => {
-    async function fetchPlayerData() {
-      try {
-        setLoading(true);
-        
-        // First, check for a daily challenge
-        const today = new Date().toISOString().split('T')[0];
-        const { data: challenge, error: challengeError } = await supabase
-          .from('daily_challenges')
-          .select('*')
-          .eq('challenge_date', today)
-          .maybeSingle();
-        
-        if (challenge) {
-          // Get the easy player for the challenge
-          const { data: player, error: playerError } = await supabase
-            .from('players')
-            .select('*')
-            .eq('id', challenge.easy_player_id)
-            .single();
-            
-          if (playerError) throw playerError;
-          
-          setGameState(prev => ({ ...prev, currentPlayer: player }));
-          
-          // Also fetch a sample of players for the database count
-          const { data: allPlayers, error } = await supabase
-            .from('players')
-            .select('*', { count: 'exact', head: true });
-            
-          if (error) throw error;
-          
-          setPlayerData(allPlayers || []);
-        } else {
-          // No challenge found, fetch random players
-          const { data, error } = await supabase
-            .from('players')
-            .select('*')
-            .eq('difficulty', 'Easy')
-            .limit(10);
-          
-          if (error) throw error;
-          
-          setPlayerData(data || []);
-          
-          // If we have players, select one randomly for the game
-          if (data && data.length > 0) {
-            const randomIndex = Math.floor(Math.random() * data.length);
-            setGameState(prev => ({ ...prev, currentPlayer: data[randomIndex] }));
-          }
-        }
-
-        // Fetch all unique colleges for autocomplete
-        const { data: colleges, error: collegesError } = await supabase
-          .from('players')
-          .select('college')
-          .order('college');
-        
-        if (collegesError) throw collegesError;
-        
-        // Extract unique colleges
-        const uniqueColleges = Array.from(new Set(colleges?.map(p => p.college) || []))
-          .filter(Boolean)
-          .sort();
-          
-        setCollegeList(uniqueColleges);
-        
-      } catch (err: any) {
-        console.error('Error fetching player data:', err);
-        setError(err.message);
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    fetchPlayerData();
+    setIsLoaded(true);
+    fetchPlayer();
   }, []);
 
-  // Filter colleges based on user input
+  // Add a new useEffect to fetch the player image when a player is selected
   useEffect(() => {
-    if (guess.length >= 3) {
-      const filtered = collegeList.filter(college => 
-        college.toLowerCase().includes(guess.toLowerCase())
-      );
-      setFilteredColleges(filtered.slice(0, 5)); // Limit to 5 suggestions
-      setShowSuggestions(true);
-    } else {
-      setShowSuggestions(false);
+    async function fetchPlayerImage() {
+      if (player?.name) {
+        // First check if we already have the image URL in the database
+        if (player.image_url) {
+          setPlayerImage(player.image_url);
+        } else {
+          // If not, fetch it from the API
+          const imageUrl = await getPlayerImage(player.name);
+          setPlayerImage(imageUrl);
+          
+          // Cache the URL in the database if we found an image
+          if (imageUrl) {
+            try {
+              const supabase = createClient(supabaseUrl, supabaseAnonKey);
+              await supabase
+                .from('players')
+                .update({ image_url: imageUrl })
+                .eq('id', player.id);
+            } catch (err) {
+              console.error('Error updating player image URL:', err);
+            }
+          }
+        }
+      } else {
+        setPlayerImage(null);
+      }
     }
-  }, [guess, collegeList]);
+    
+    fetchPlayerImage();
+  }, [player?.name]);
 
-  // Handle user guess submission
+  // Fetch a player from Supabase
+  const fetchPlayer = async () => {
+    try {
+      setLoading(true);
+      
+      // Create Supabase client
+      const supabase = createClient(supabaseUrl, supabaseAnonKey);
+      
+      // Get a random player (using Easy difficulty for simplicity)
+      const { data, error } = await supabase
+        .from('players')
+        .select('*')
+        .eq('difficulty', 'Easy')
+        .limit(10);
+        
+      if (error) throw error;
+      
+      // Get total count of players
+      const { count, error: countError } = await supabase
+        .from('players')
+        .select('*', { count: 'exact', head: true });
+        
+      if (countError) throw countError;
+      
+      setPlayerCount(count || 0);
+      
+      // If we have players, select one randomly
+      if (data && data.length > 0) {
+        const randomIndex = Math.floor(Math.random() * data.length);
+        setPlayer(data[randomIndex]);
+      }
+    } catch (err: any) {
+      console.error('Error fetching player:', err);
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Handle guess submission
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!gameState.currentPlayer || gameState.isCorrect || gameState.gaveUp) return;
+    if (!player || gameState !== 'playing') return;
     
     const trimmedGuess = guess.trim();
     if (!trimmedGuess) return;
     
     // Add to guesses array if not already included
-    if (!gameState.guesses.includes(trimmedGuess)) {
-      const updatedGuesses = [...gameState.guesses, trimmedGuess];
+    if (!guesses.includes(trimmedGuess)) {
+      const updatedGuesses = [...guesses, trimmedGuess];
+      setGuesses(updatedGuesses);
       
       // Check if guess is correct (case insensitive)
-      const isCorrect = trimmedGuess.toLowerCase() === gameState.currentPlayer.college.toLowerCase();
-      const newAttempts = gameState.attempts + 1;
+      const isCorrect = trimmedGuess.toLowerCase() === player.college.toLowerCase();
+      const newAttempts = attempts + 1;
       
-      setGameState(prev => ({
-        ...prev,
-        attempts: newAttempts,
-        isCorrect,
-        guesses: updatedGuesses,
-        feedback: isCorrect 
-          ? 'Correct! Well done!' 
-          : newAttempts >= MAX_ATTEMPTS
-            ? `Game over! The correct answer was ${gameState.currentPlayer?.college}`
-            : `Incorrect. Try again! (Attempt ${newAttempts}/${MAX_ATTEMPTS})`
-      }));
+      if (isCorrect) {
+        setFeedback('Correct! Well done!');
+        setGameState('correct');
+        
+        // Load a new question after a delay
+        setTimeout(() => {
+          resetGame();
+        }, 2000);
+      } else {
+        if (newAttempts >= MAX_ATTEMPTS) {
+          setFeedback(`Game over! The correct answer was ${player.college}`);
+          setGameState('incorrect');
+        } else {
+          setFeedback(`Incorrect. Try again! (Attempt ${newAttempts}/${MAX_ATTEMPTS})`);
+        }
+        setAttempts(newAttempts);
+      }
     } else {
-      setGameState(prev => ({
-        ...prev,
-        feedback: 'You already guessed that college.'
-      }));
+      setFeedback('You already guessed that college.');
     }
     
-    // Clear the input and hide suggestions
+    // Clear the input
     setGuess('');
-    setShowSuggestions(false);
-  };
-
-  // Handle selecting a college from suggestions
-  const handleSelectCollege = (college: string) => {
-    setGuess(college);
-    setShowSuggestions(false);
   };
 
   // Handle giving up
   const handleGiveUp = () => {
-    if (gameState.currentPlayer && !gameState.isCorrect && !gameState.gaveUp) {
-      setGameState(prev => ({
-        ...prev,
-        gaveUp: true,
-        feedback: `You gave up. The correct answer was ${gameState.currentPlayer?.college}.`
-      }));
+    if (player && gameState === 'playing') {
+      setFeedback(`You gave up. The correct answer was ${player.college}.`);
+      setGameState('gaveup');
     }
   };
 
-  // Reset the game with a new player
+  // Reset the game
   const resetGame = () => {
-    if (playerData.length > 0) {
-      const randomIndex = Math.floor(Math.random() * playerData.length);
-      setGameState({
-        currentPlayer: playerData[randomIndex],
-        attempts: 0,
-        isCorrect: false,
-        gaveUp: false,
-        guesses: [],
-        feedback: ''
-      });
-      setGuess('');
-      setShowSuggestions(false);
-    }
+    setGuess('');
+    setAttempts(0);
+    setGuesses([]);
+    setFeedback('');
+    setGameState('playing');
+    setPlayerImage(null);
+    fetchPlayer();
   };
 
-  // Determine if the game is over
-  const isGameOver = gameState.isCorrect || gameState.gaveUp || gameState.attempts >= MAX_ATTEMPTS;
+  if (!isLoaded) {
+    return <div className="bg-gray-800 text-white p-8 rounded-lg">Loading game data...</div>;
+  }
 
-  if (loading) return <div className="bg-gray-800 text-white p-8 rounded-lg">Loading player data...</div>;
+  if (loading) {
+    return <div className="bg-gray-800 text-white p-8 rounded-lg">Loading player data...</div>;
+  }
   
-  if (error) return <div className="bg-red-800 text-white p-8 rounded-lg">Error: {error}</div>;
+  if (error) {
+    return <div className="bg-red-800 text-white p-8 rounded-lg">Error: {error}</div>;
+  }
   
-  if (!gameState.currentPlayer) return <div className="bg-red-800 text-white p-8 rounded-lg">No players available</div>;
+  if (!player) {
+    return <div className="bg-red-800 text-white p-8 rounded-lg">No players available</div>;
+  }
+
+  const isGameOver = gameState === 'correct' || gameState === 'incorrect' || gameState === 'gaveup';
 
   return (
     <div className="bg-gray-800 text-white p-8 rounded-lg">
@@ -227,30 +197,36 @@ export function GameContainer() {
       
       {/* Display player image or clue */}
       <div className="mb-6 h-64 bg-gray-700 flex items-center justify-center rounded-lg">
-        {gameState.currentPlayer.image_url ? (
+        {playerImage ? (
           <img 
-            src={gameState.currentPlayer.image_url} 
-            alt="Mystery player" 
+            src={playerImage} 
+            alt={`${player.name}`} 
             className="max-h-full max-w-full object-contain rounded"
           />
         ) : (
-          <div className="text-gray-400">Player image not available</div>
+          <div className="w-full h-full flex items-center justify-center">
+            <div className="bg-gray-600 rounded-full w-32 h-32 flex items-center justify-center">
+              <span className="text-4xl font-bold text-gray-300">
+                {player.name?.charAt(0) || '?'}
+              </span>
+            </div>
+          </div>
         )}
       </div>
       
       {/* Player info */}
       <div className="mb-4">
-        <p className="font-semibold">{gameState.currentPlayer.name}</p>
-        <p className="text-gray-400">Position: {gameState.currentPlayer.position}</p>
-        <p className="text-gray-400">Difficulty: {gameState.currentPlayer.difficulty}</p>
+        <p className="font-semibold">{player.name}</p>
+        <p className="text-gray-400">Position: {player.position}</p>
+        <p className="text-gray-400">Difficulty: {player.difficulty}</p>
       </div>
       
       {/* Previous guesses */}
-      {gameState.guesses.length > 0 && (
+      {guesses.length > 0 && (
         <div className="mb-4">
           <p className="text-sm text-gray-400 mb-1">Previous guesses:</p>
           <div className="flex flex-wrap gap-2">
-            {gameState.guesses.map((g, index) => (
+            {guesses.map((g, index) => (
               <span key={index} className="bg-gray-700 px-2 py-1 rounded text-sm">
                 {g}
               </span>
@@ -260,15 +236,15 @@ export function GameContainer() {
       )}
       
       {/* Game feedback */}
-      {gameState.feedback && (
+      {feedback && (
         <div className={`mb-4 p-3 rounded ${
-          gameState.isCorrect 
+          gameState === 'correct' 
             ? 'bg-green-700' 
-            : gameState.gaveUp || gameState.attempts >= MAX_ATTEMPTS
+            : gameState === 'incorrect' || gameState === 'gaveup'
               ? 'bg-yellow-700'
               : 'bg-red-700'
         }`}>
-          {gameState.feedback}
+          {feedback}
         </div>
       )}
       
@@ -278,7 +254,7 @@ export function GameContainer() {
           <div 
             key={i} 
             className={`w-8 h-8 flex items-center justify-center rounded-full border ${
-              i < gameState.attempts 
+              i < attempts 
                 ? 'border-red-500 bg-red-500 bg-opacity-20' 
                 : 'border-gray-600'
             }`}
@@ -306,21 +282,6 @@ export function GameContainer() {
             >
               Guess
             </button>
-            
-            {/* College suggestions dropdown */}
-            {showSuggestions && filteredColleges.length > 0 && (
-              <div className="absolute top-full left-0 right-0 mt-1 bg-white text-black rounded shadow-lg z-10 max-h-60 overflow-y-auto">
-                {filteredColleges.map((college, index) => (
-                  <div 
-                    key={index}
-                    className="px-4 py-2 hover:bg-gray-100 cursor-pointer"
-                    onClick={() => handleSelectCollege(college)}
-                  >
-                    {college}
-                  </div>
-                ))}
-              </div>
-            )}
           </div>
           
           <button
@@ -332,27 +293,33 @@ export function GameContainer() {
           </button>
         </form>
       ) : (
-        <button 
-          onClick={resetGame}
-          className="w-full bg-green-600 hover:bg-green-700 px-6 py-2 rounded mb-4"
-        >
-          Play Again
-        </button>
+        // Only show Play Again button if the game is over due to wrong answers or giving up
+        // Don't show it when the answer is correct (since we auto-advance)
+        gameState === 'correct' ? null : (
+          <button 
+            onClick={resetGame}
+            className="w-full bg-green-600 hover:bg-green-700 px-6 py-2 rounded mb-4"
+          >
+            Play Again
+          </button>
+        )
       )}
       
       {/* Player college info (shown after game is over) */}
       {isGameOver && (
         <div className="mt-4 bg-gray-700 p-4 rounded">
-          <h3 className="font-bold text-lg mb-2">College: {gameState.currentPlayer.college}</h3>
+          <h3 className="font-bold text-lg mb-2">College: {player.college}</h3>
           <p className="text-sm text-gray-300">
-            {gameState.currentPlayer.name} played college football at {gameState.currentPlayer.college}.
+            {player.name} played college football at {player.college}.
           </p>
         </div>
       )}
       
       <div className="mt-6 text-xs text-gray-400">
-        Players in database: {playerData.length}
+        Players in database: {playerCount}
       </div>
     </div>
   );
-} 
+}
+
+export default GameContainer; 
